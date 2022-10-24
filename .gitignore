@@ -1,6 +1,8 @@
 /lib/
+/data/
 /.idea/
-/contract*/
+/share/
+/etc/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

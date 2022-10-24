@@ -3,8 +3,22 @@ import os
 import time
 
 from ib_insync import *
-whatToShow = 'BID_ASK'
-#whatToShow = 'TRADES'
+
+DATA_DIR ="../data/raw/"
+MAX_DAYS = 200
+MAX_BATCH_PER_FILE = 13
+#
+endDateTime = ''
+endDateTime: datetime = datetime.datetime(2022, 9, 30, 16, 00, 00)
+#
+# contract = Contract(symbol="AAPL", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
+# contract = Contract(symbol="TSLA", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
+contract = Contract(conId=13455763, symbol="VIX", secType="IND", exchange="CBOE", currency="USD", includeExpired=False)
+#
+#whatToShow = 'BID_ASK'
+whatToShow = 'TRADES'
+
+
 # -- do not use, only 1 rec/day: whatToShow = 'HISTORICAL_VOLATILITY'
 # https://interactivebrokers.github.io/tws-api/historical_bars.html
 # Type        Open	         High	         Low	        Close	      Volume
@@ -16,14 +30,7 @@ whatToShow = 'BID_ASK'
 # HISTORICAL  Starting       Highest         Lowest          Last          N/A
 # _VOLATILITY volatility	 volatility	     volatility	     volatility
 
-# contract = Contract(symbol="AAPL", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
-contract = Contract(symbol="TSLA", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
-# contract = Contract(conId=13455763, symbol="VIX", secType="IND", exchange="CBOE", currency="USD", includeExpired=False)
-# contract = Contract(symbol="VIX", exchange="CFE", currency="USD", includeExpired=False)
 #
-#
-endDateTime = ''
-endDateTime: datetime = datetime.datetime(2022, 5, 10, 11, 59, 39)
 os.system("say Starting!")
 
 def writeToFile():
@@ -32,9 +39,10 @@ def writeToFile():
         return
     # allBars = [b for bars in reversed(barsList) for b in bars]
     df = util.df(barsList)
-    df.to_csv(contract.symbol + "-" + whatToShow + "-" + str(round(time.time())) + '.csv', index=False)
+    fn = DATA_DIR + contract.symbol + "/" + contract.symbol + "-" + whatToShow + "-" + str(round(time.time())) + '.csv'
+    df.to_csv(fn, index=False)
     barsList = []
-    print("      Written to file.  Next dt = ", endDateTime)
+    print(f'   Written to file {fn}.  Next dt = ', endDateTime)
 
 
 ib = IB()
@@ -45,13 +53,14 @@ t1600 = datetime.time(16, 0, 0)
 t1630 = datetime.time(16, 30, 0)
 barsList = []
 ctr_total = 0
-MAX_DAYS = 200
-while ctr_total < (13 * MAX_DAYS):  # 7 30min dur * MAX_DAYS days
+
+while ctr_total < (MAX_BATCH_PER_FILE * MAX_DAYS):  # 7 30min dur * MAX_DAYS days
     ctr_total += 1
     print(datetime.datetime.now(), 'Starting Request: ctr_total', ctr_total,  'next timestamp', endDateTime)
     bars = ib.reqHistoricalData(
         contract,
         endDateTime=endDateTime,
+        # durationStr='1800 S',
         durationStr='1800 S',
         barSizeSetting='1 secs',
         whatToShow=whatToShow,
@@ -82,7 +91,7 @@ while ctr_total < (13 * MAX_DAYS):  # 7 30min dur * MAX_DAYS days
 
     ib.sleep(20)
     # flush to file every so often
-    if (ctr_total % 10) == 0:
+    if (ctr_total % MAX_BATCH_PER_FILE) == 0:
         writeToFile()
 # final write to file
 writeToFile()
