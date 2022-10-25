@@ -3,11 +3,15 @@ import numpy as np
 import pandas as pd
 import timeit
 
-def load_data(data_dir: str):
+def load_data(data_dir: str, max_files: int = 999):
     # Get CSV files list from a folder
     file_str = data_dir + "-*.csv"
     csv_files = glob.glob(file_str)
-    print("  loading " + file_str + " file count: " + str(len(csv_files)))
+    csv_files = csv_files[0:max_files]
+    if len(csv_files) == 0:
+        print("No files in directory ", file_str, csv_files)
+        exit(1)
+    print("          loading " + file_str + " file count: " + str(len(csv_files)))
     # Read each CSV file into DataFrame
     # This creates a list of dataframes
     df_list = (pd.read_csv(file) for file in csv_files)

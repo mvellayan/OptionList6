@@ -1,62 +1,13 @@
 import datetime
-import glob
 import numpy as np
 import pandas as pd
-import timeit
+import data_prep_common as dc
 
-
-df = pd.DataFrame()
-
-def load_data(data_dir: str, data_prefix: str, max_files:int, trades_flag: bool):
-    global df
-    # Get CSV files list from a folder
-    file_str = data_dir + data_prefix + "-*.csv"
-    csv_files = glob.glob(file_str)
-    csv_files = csv_files[0:max_files]
-    print("  loading " + file_str + " file count: " + str(len(csv_files)))
-    # Read each CSV file into DataFrame
-    # This creates a list of dataframes
-    df_list = (pd.read_csv(file) for file in csv_files)
-    # Concatenate all DataFrames
-    df = pd.concat(df_list, ignore_index=True)
-    # Only want to track average to 3 decimal places.  Otherwise, end up with a lot of digits
-    if trades_flag:
-        df['average'] = df['average'].round(decimals=3)
-        # need this column to compute average of averages
-        df['_weighted_vol_avg'] = df['volume'] * df['average']
-
-    else:
-        df.drop(columns=['average','volume','barCount'], inplace=True)
-        df.rename(columns={'open': 'bid_avg', 'high': 'ask_max', 'low': 'bid_min', 'close': 'ask_avg'}, inplace=True)
-
-
-
-def dedup():
-    global df
-    # 1.1 Drop duplicates & check for missing values
-    dups = len(df['date'])-len(df['date'].drop_duplicates())
-    print("      # of duplicates", dups, ' out of ', len(df), ' or ', round(dups/len(df), 5), '%')
-    # Need this col for dedup
-    df['date2_str'] = df['date'][::].str.slice(stop=10)
-    # Drop duplicate entries
-    df.drop_duplicates(subset=['date'], keep='first', inplace=True)
-
-    pd_group_cnt = df.groupby(['date2_str'])['date2_str'].count().to_frame()
-    print("      Days with 23,400 Qutoes:")
-    print("      ------------------------")
-    pd.set_option('display.max_rows', None)
-    print(pd_group_cnt.loc[pd_group_cnt['date2_str'] == 23400])
-
-    print("      Days WRONG # Qutoes:")
-    print("      --------------------")
-    print(pd_group_cnt.loc[pd_group_cnt['date2_str'] != 23400])
-    # df = df.drop('date2_str', axis=1)
-    df.set_index('date')
-    df = df.sort_index()
-    pd.set_option('display.max_rows', 10)
+# Simple time now function
+def tn():
+    return datetime.datetime.now().strftime("%H:%M:%S") + ": "
 
 # lambda functions
-
 # return 1st value in series
 def firstValue(rows):
     return rows.iloc[0]
@@ -96,23 +47,24 @@ def max_last_5(rows):
 
 
 # Store/Save 1 second windows for h1, h2, h3, h4, h5
-def one_second_window(prefix: str, window: int, trades: bool):
-    global df
-    if trades:
+def one_second_window(df, prefix: str, window: int, quote_type: str):
+    if quote_type == "TRADES":
         df[prefix + '_high'] = df['high'].rolling(window=window).agg({'maxLast': firstValue})
         df[prefix + '_low'] = df['low'].rolling(window=window).agg({'minLast': firstValue})
         df[prefix + '_barCount'] = df['barCount'].rolling(window=window).agg({'sumLast': firstValue})
         df[prefix + '_volume'] = df['volume'].rolling(window=window).agg({'sumLast': firstValue})
         df[prefix + '_average'] = df['average'].rolling(window=window).agg({'sumLast': firstValue})
-    else:
+    elif quote_type == "BID_ASK":
         df[prefix + '_ask_max'] = df['ask_max'].rolling(window=window).agg({'maxLast': firstValue})
         df[prefix + '_bid_min'] = df['bid_min'].rolling(window=window).agg({'minLast': firstValue})
         df[prefix + '_bid_avg'] = df['bid_avg'].rolling(window=window).agg({'sumLast': firstValue})
         df[prefix + '_ask_avg'] = df['ask_avg'].rolling(window=window).agg({'sumLast': firstValue})
+    else:
+        print(f"unexpected type {quote_type}")
+        exit(1)
 
 # Store/Save 5 second windows for h1, h2, h3, h4, h5
-def five_second_window(prefix: str, window: int):
-    global df
+def five_second_window(df, prefix: str, window: int):
     df[prefix + '_high_max'] = df['high'].rolling(window=window).agg({'maxLast5': max_last_5})
     df[prefix + '_low_min'] = df['low'].rolling(window=window).agg({'minLast5': min_last_5})
 
@@ -124,72 +76,101 @@ def five_second_window(prefix: str, window: int):
     df.drop(columns=[prefix + '_weighted_vol_avg_sum'])
 
 
-# Compute Future 5 second window summary
-def future_avg(prefix:str, window:int):
-    global df
+# Compute Future 5-second window summary
+def future_avg(df, prefix: str, window: int):
     df.set_index('date')
     df = df.sort_index(ascending=False)
     df.reset_index()
-    df[ prefix + '_average'] = df['average'].rolling(window=window).agg({'firstValue': firstValue})
+    df[prefix + '_average'] = df['average'].rolling(window=window).agg({'firstValue': firstValue})
     df = df.sort_index(ascending=True)
     df.reset_index()
+    return df
 
-def future_arrow(prefix:str, field: str, window:int):
-    global df
+
+def future_arrow(df, prefix: str, field: str, window: float):
     df[prefix + "_arrow"] = df.apply(lambda x: arrow(x[field], x['average'], window), axis=1)
+    return df
 
 
 def rebase(low,
-           open,	high,	close,	average,
-           h1s_high_max,	h1s_low_min,	h1s_average_avg,
-           h2s_high_max,	h2s_low_min,	h2s_average_avg,
-           h3s_high_max,	h3s_low_min,	h3s_average_avg,
-           h4s_high_max,	h4s_low_min,	h4s_average_avg,
-           f5s_average):
-   return pd.Series([open - low, 	high - low, close - low, 	average - low,
-          h1s_high_max - low, 	h1s_low_min - low, 	h1s_average_avg - low,
-          h2s_high_max - low, 	h2s_low_min - low, 	h2s_average_avg - low,
-          h3s_high_max - low, 	h3s_low_min - low, 	h3s_average_avg - low,
-          h4s_high_max - low, 	h4s_low_min - low, 	h4s_average_avg - low,
-          f5s_average - low])
-## Compute 5 second window summary
+           c1, c2, c3, c4, c5, c6, c7, c8, c9, c10,
+           c11, c12, c13, c14, c15, c16, c17, c18, c19, c20,
+           c21, c22, c23, c24, c25, c26, c27, c28, c29, c30,
+           c31, c32, c33, c34, c35, c36, c37):
+   return pd.Series([
+       c1 - low, c2 - low, c3 - low, c4 - low, c5 - low,
+       c6 - low, c7 - low, c8 - low, c9 - low, c10 - low,
+       c11 - low, c12 - low, c13 - low, c14 - low, c15 - low,
+       c16 - low, c17 - low, c18 - low, c19 - low, c20 - low,
+       c21 - low, c22 - low, c23 - low, c24 - low, c25 - low,
+       c26 - low, c27 - low, c28 - low, c29 - low, c30 - low,
+       c31 - low, c32 - low, c33 - low, c34 - low, c35 - low,
+       c36 - low, c37 - low])
 
-def add_vix_col():
-    global df
-    csv_files = glob.glob("./contract-VIX/*.csv")
-    print("  loading VIX file count: " + str(len(csv_files)))
-    # Read each CSV file into DataFrame
-    # This creates a list of dataframes
-    df_list = (pd.read_csv(file) for file in csv_files)
-    # Concatenate all DataFrames
-    dfVIX = pd.concat(df_list, ignore_index=True)
-    # dedup
+def main(param):
+
+    #
+    # load TRADES
+    print(tn() + "Starting main()")
+    dirSp = param.p_in_directory + param.p_symbol + "/" + param.p_symbol + "-" + "TRADES"
+    dfTrades = dc.load_data(dirSp)
+    dfTrades.drop_duplicates(subset=['date'], keep='first', inplace=True)
+    print(tn() + "Loaded TRADES.", dfTrades.shape)
+
+    #
+    # load BID_ASK
+    dirSp = param.p_in_directory + param.p_symbol + "/" + param.p_symbol + "-" + "BID_ASK"
+    dfBA = dc.load_data(dirSp)
+    dfBA.drop_duplicates(subset=['date'], keep='first', inplace=True)
+    print(tn() + "Loaded BID_ASK", dfBA.shape)
+
+    #
+    # load VIX
+    dirSp = param.p_in_directory + "VIX/VIX-TRADES"
+    dfVIX = dc.load_data(dirSp)
     dfVIX.drop_duplicates(subset=['date'], keep='first', inplace=True)
-    vixPD2 = dfVIX[['date', 'open']].copy()
-    vixPD2.rename(columns={'open': 'vix'}, inplace=True)
-    print("  Shapes before merge: ", df.shape, vixPD2.shape)
-    df = pd.merge(left=df, right=vixPD2, how="left", on="date", validate="one_to_one")
-    print("  After merge: ", df.shape)
+    print(tn() + "Loaded VIX", dfVIX.shape)
 
+    #
+    # filter by month, if specified.
+    if 1 <= param.p_month_no <= 12:
+        dfTrades = dfTrades[pd.to_datetime(dfTrades['date']).dt.month == param.p_month_no]
+        dfBA = dfBA[pd.to_datetime(dfBA['date']).dt.month == param.p_month_no]
+        dfVIX = dfVIX[pd.to_datetime(dfVIX['date']).dt.month == param.p_month_no]
+        print(tn() + " Filtered by month", dfTrades.shape, dfBA.shape, dfVIX.shape)
 
-def main(data_dir, data_prefix, file_max):
-    global df
-    bTrades = "TRADES" in data_prefix
-    bBidAsk = "BID_ASK" in data_prefix
-
-    result = timeit.timeit(stmt='load_data("' + data_dir + '", "' + data_prefix + '", '
-                                + str(file_max) + ', ' + str(bTrades) + ')', globals=globals(), number=1)
-    print(f"Loaded Data: {result.__round__(2)} seconds. ", df.shape)
-
-    result = timeit.timeit(stmt='dedup()', globals=globals(), number=1)
-    print(f"Dedup Data : {result.__round__(2)} seconds.", df.shape)
+    #
+    # Process TRADES
+    dfTrades['average'] = dfTrades['average'].round(decimals=3)
+    # need this column to compute average of averages
+    dfTrades['_weighted_vol_avg'] = dfTrades['volume'] * dfTrades['average']
+    print(tn() + " Processed TRADES data", dfTrades.shape)
 
     for ctr in range(1, 5):
         prefix = "h"+str(ctr)+"s"
-        call = 'one_second_window("' + prefix + '", ' + str(ctr+1) + ', ' + str(bTrades) + ')'
-        result = timeit.timeit(stmt=call, globals=globals(), number=1)
-        print(f"Computed 1 second window for [{call}]: {result.__round__(2)} seconds.", df.shape)
+        one_second_window(dfTrades, prefix, ctr+1, "TRADES")
+        print(tn() + " .Completed 1 second TRADES for " + str(ctr), dfTrades.shape)
 
+    #
+    # Process BID_ASK
+    dfBA.drop(columns=['average', 'volume', 'barCount'], inplace=True)
+    dfBA.rename(columns={'open': 'bid_avg', 'high': 'ask_max', 'low': 'bid_min', 'close': 'ask_avg'}, inplace=True)
+    print(tn() + " Processed BID_ASK data")
+    for ctr in range(1, 5):
+        prefix = "h"+str(ctr)+"s"
+        one_second_window(dfBA, prefix, ctr+1, "BID_ASK")
+        print(tn() + " .Completed 1 second BID_ASK for " + str(ctr), dfTrades.shape)
+
+    #
+    # Process VIX
+    dfVIX = dfVIX[['date', 'open']].copy()
+    dfVIX.rename(columns={'open': 'vix'}, inplace=True)
+    print(tn() + " Processed VIX data")
+
+    #
+    # merge vix with bid_ask
+    dfBA = pd.merge(left=dfBA, right=dfVIX, how="left", on="date", validate="one_to_one")
+    print(tn() + " Merged VIX data with BID_ASK", dfBA.shape)
 
     # prefix = ["h5s", "h10s", "h15s", "h20s"]
     # window = [ 6, 11, 16, 21]
@@ -198,46 +179,88 @@ def main(data_dir, data_prefix, file_max):
     #    result = timeit.timeit(stmt=call, globals=globals(), number=1)
     #    print(f"Computed 5 second window for [{call}]: {result.__round__(2)} seconds.", df.shape)
 
-    if bTrades:
-        result = timeit.timeit(stmt='future_avg("f5s", 6)', globals=globals(), number=1)
-        print(f"Compute future f5s second: {result.__round__(2)} seconds.", df.shape)
+    #
+    # Merge bid_ask with TRADES
+    dfTrades = pd.merge(left=dfTrades, right=dfBA, how="left", on="date", validate="one_to_one")
+    print(tn() + " Merged all data", dfTrades.shape)
 
-        prefix = ["f5s_10c", "f5s_15c", "f5s_20c", "f5s_25c"]
-        window = [0.10, 0.15, 0.20, 0.25]
-        for pre, win in zip(prefix, window):
-            # future_arrow(pre, "f5s_average", window=win)
-            call = 'future_arrow("' + pre + '", "f5s_average", window=' + str(win) + ')'
-            # print(funCall)
-            result = timeit.timeit(stmt=call, globals=globals(), number=1)
-            print(f"Compute future arrow for  {call}] second: {result.__round__(2)} seconds.", df.shape)
+    #
+    # compute future values
+    #
+    dfTrades = future_avg(dfTrades, "f5s", 6)
+    print(tn() + " Computed f5 average")
 
-        df = df.drop(columns=['_weighted_vol_avg'])
-        print(f"   dropped computed col", df.shape)
-    else:
-        add_vix_col()
+    #
+    # Compute future arrows
+    prefix = ["f5s_10c", "f5s_15c", "f5s_20c", "f5s_25c"]
+    window = [0.10, 0.15, 0.20, 0.25]
+    for pre, win in zip(prefix, window):
+        # future_arrow(pre, "f5s_average", window=win)
+        dfTrades = future_arrow(dfTrades, pre, "f5s_average", win)
+        print(tn() + " .Computed future arrow for ", pre, " New shape: ", dfTrades.shape)
 
-    df.to_csv(data_dir + data_prefix + ".csv", index=False)
+    dfTrades = dfTrades.drop(columns=['_weighted_vol_avg'])
+    print(tn(), f"  Dropped computed col", dfTrades.shape)
 
-"""
-    df[['open', 'high', 'close', 'average',
+    #
+    # write projected data w/o normalization
+    print(tn() + " Writing file projected file to csv")
+    fn = param.p_out_directory + param.p_symbol + "-" + str(param.p_month_no) + ".csv"
+    dfTrades.to_csv(fn, index=False)
+    print(tn() + " Wrote file projected file to csv", fn, dfTrades.shape)
+
+    dfTrades[['open', 'high', 'close', 'average',
         'h1s_high', 'h1s_low', 'h1s_average',
         'h2s_high', 'h2s_low', 'h2s_average',
         'h3s_high', 'h3s_low', 'h3s_average',
         'h4s_high', 'h4s_low', 'h4s_average',
-        'f5s_average']] = df.apply(lambda x:
-                                  rebase(x['low'], x['open'],	x['high'],	x['close'],	x['average'],
-                                         x['h1s_high'],	x['h1s_low'],	x['h1s_average'],
-                                         x['h2s_high'],	x['h2s_low'],	x['h2s_average'],
-                                         x['h3s_high'],	x['h3s_low'],	x['h3s_average'],
-                                         x['h4s_high'],	x['h4s_low'],	x['h4s_average'],
-                                         x['f5s_average']), axis=1)
+        'f5s_average',
+        'bid_avg', 'ask_max', 'bid_min', 'ask_avg',
+        'h1s_ask_max', 'h1s_bid_min', 'h1s_bid_avg', 'h1s_ask_avg',
+        'h2s_ask_max', 'h2s_bid_min', 'h2s_bid_avg', 'h2s_ask_avg',
+        'h3s_ask_max', 'h3s_bid_min', 'h3s_bid_avg', 'h3s_ask_avg',
+        'h4s_ask_max', 'h4s_bid_min', 'h4s_bid_avg', 'h4s_ask_avg']] = dfTrades.apply(lambda x:
+            rebase(x['low'], x['open'], x['high'], x['close'], x['average'],
+            x['h1s_high'], x['h1s_low'], x['h1s_average'],
+            x['h2s_high'], x['h2s_low'], x['h2s_average'],
+            x['h3s_high'], x['h3s_low'], x['h3s_average'],
+            x['h4s_high'], x['h4s_low'], x['h4s_average'],
+        x['f5s_average'],
+        x['bid_avg'], x['ask_max'], x['bid_min'], x['ask_avg'],
+        x['h1s_ask_max'], x['h1s_bid_min'], x['h1s_bid_avg'], x['h1s_ask_avg'],
+        x['h2s_ask_max'], x['h2s_bid_min'], x['h2s_bid_avg'], x['h2s_ask_avg'],
+        x['h3s_ask_max'], x['h3s_bid_min'], x['h3s_bid_avg'], x['h3s_ask_avg'],
+        x['h4s_ask_max'], x['h4s_bid_min'], x['h4s_bid_avg'], x['h4s_ask_avg']), axis=1)
 
-    print(f"   normalized from low value", df.shape)
-"""
+    print(tn() + " Rescaled data.  Removed low value!")
+
+    #
+    # write Normalized data w/o normalization
+    print(tn() + " Writing file normalized data to csv")
+    fn = param.p_out_directory + param.p_symbol + "-" + str(param.p_month_no) + "-low.csv"
+    dfTrades.to_csv(fn, index=False)
+    print(tn() + " Wrote file normalized data to csv", fn, dfTrades.shape)
+
+
+class Param:
+    def __init__(self, p_in_directory, p_out_directory, p_symbol, p_month_no=0):
+        self.p_in_directory = p_in_directory
+        self.p_out_directory = p_out_directory
+        self.p_symbol = p_symbol
+        self.p_month_no = p_month_no
+
+    def __str__(self):
+        return "[" + self.p_in_directory + ", " + self.p_out_directory \
+               + ", " + self.p_symbol + ", " + str(self.p_month_no) + "]"
+
+params = [
+    Param("../data/raw/", "../data/projected/", "TSLA", 7), Param("../data/raw/", "../data/projected/", "TSLA", 9)
+    # , Param("../data/raw/", "AAPL")
+]
+
 
 start_time = datetime.datetime.now()
-p_data_dir ="./contract-TSLA/"
-#p_data_prefix = "TSLA-BID_ASK"
-p_data_prefix = "TSLA-TRADES"
-main(p_data_dir, p_data_prefix, 999)
+for pm in params:
+    print(tn() + " Starting Execution for ", pm)
+    main(pm)
 print("\n\nStarted: ", start_time, ' Finished: ', datetime.datetime.now(), ' Dur: ', (datetime.datetime.now() - start_time).total_seconds())

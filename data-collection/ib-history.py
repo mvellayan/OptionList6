@@ -9,14 +9,14 @@ MAX_DAYS = 200
 MAX_BATCH_PER_FILE = 13
 #
 endDateTime = ''
-endDateTime: datetime = datetime.datetime(2022, 9, 30, 16, 00, 00)
+endDateTime: datetime = datetime.datetime(2022, 3, 15, 16, 00, 00)
 #
 # contract = Contract(symbol="AAPL", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
-# contract = Contract(symbol="TSLA", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
-contract = Contract(conId=13455763, symbol="VIX", secType="IND", exchange="CBOE", currency="USD", includeExpired=False)
+contract = Contract(symbol="TSLA", secType="STK", currency="USD", exchange="SMART", includeExpired=False)
+#contract = Contract(conId=13455763, symbol="VIX", secType="IND", exchange="CBOE", currency="USD", includeExpired=False)
 #
-#whatToShow = 'BID_ASK'
-whatToShow = 'TRADES'
+whatToShow = 'BID_ASK'
+#whatToShow = 'TRADES'
 
 
 # -- do not use, only 1 rec/day: whatToShow = 'HISTORICAL_VOLATILITY'
@@ -31,7 +31,7 @@ whatToShow = 'TRADES'
 # _VOLATILITY volatility	 volatility	     volatility	     volatility
 
 #
-os.system("say Starting!")
+# os.system("say Starting!")
 
 def writeToFile():
     global barsList
