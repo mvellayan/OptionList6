@@ -49,31 +49,31 @@ def max_last_5(rows):
 # Store/Save 1 second windows for h1, h2, h3, h4, h5
 def one_second_window(df, prefix: str, window: int, quote_type: str):
     if quote_type == "TRADES":
-        df[prefix + '_high'] = df['high'].rolling(window=window).agg({'maxLast': firstValue})
-        df[prefix + '_low'] = df['low'].rolling(window=window).agg({'minLast': firstValue})
-        df[prefix + '_barCount'] = df['barCount'].rolling(window=window).agg({'sumLast': firstValue})
-        df[prefix + '_volume'] = df['volume'].rolling(window=window).agg({'sumLast': firstValue})
-        df[prefix + '_average'] = df['average'].rolling(window=window).agg({'sumLast': firstValue})
+        df[prefix + '_low'] = df['h0s_low'].rolling(window=window).agg({'minLast': firstValue})
+        df[prefix + '_average'] = df['h0s_average'].rolling(window=window).agg({'sumLast': firstValue})
+        df[prefix + '_high'] = df['h0s_high'].rolling(window=window).agg({'maxLast': firstValue})
+        df[prefix + '_volume'] = df['h0s_volume'].rolling(window=window).agg({'sumLast': firstValue})
+        df[prefix + '_barCount'] = df['h0s_barCount'].rolling(window=window).agg({'sumLast': firstValue})
     elif quote_type == "BID_ASK":
-        df[prefix + '_ask_max'] = df['ask_max'].rolling(window=window).agg({'maxLast': firstValue})
-        df[prefix + '_bid_min'] = df['bid_min'].rolling(window=window).agg({'minLast': firstValue})
-        df[prefix + '_bid_avg'] = df['bid_avg'].rolling(window=window).agg({'sumLast': firstValue})
-        df[prefix + '_ask_avg'] = df['ask_avg'].rolling(window=window).agg({'sumLast': firstValue})
+        df[prefix + '_bid_min'] = df['h0s_bid_min'].rolling(window=window).agg({'minLast': firstValue})
+        df[prefix + '_bid_avg'] = df['h0s_bid_avg'].rolling(window=window).agg({'sumLast': firstValue})
+        df[prefix + '_ask_avg'] = df['h0s_ask_avg'].rolling(window=window).agg({'sumLast': firstValue})
+        df[prefix + '_ask_max'] = df['h0s_ask_max'].rolling(window=window).agg({'maxLast': firstValue})
     else:
         print(f"unexpected type {quote_type}")
         exit(1)
 
 # Store/Save 5 second windows for h1, h2, h3, h4, h5
-def five_second_window(df, prefix: str, window: int):
-    df[prefix + '_high_max'] = df['high'].rolling(window=window).agg({'maxLast5': max_last_5})
-    df[prefix + '_low_min'] = df['low'].rolling(window=window).agg({'minLast5': min_last_5})
-
-    df[prefix + '_barCount_sum'] = df['barCount'].rolling(window=window).agg({'sumLast5': sum_last_5})
-    df[prefix + '_volume_sum'] = df['volume'].rolling(window=window).agg({'sumLast5': sum_last_5})
-    df[prefix + '_weighted_vol_avg_sum'] = df['_weighted_vol_avg'].rolling(window=6).agg({'SumLast5': sum_last_5})
-    df[prefix + '_average_avg'] = df[prefix + '_weighted_vol_avg_sum'] / df[prefix + '_volume_sum']
-    df[prefix + '_average_avg'] = df[prefix + '_average_avg'].round(decimals=3)
-    df.drop(columns=[prefix + '_weighted_vol_avg_sum'])
+# def five_second_window(df, prefix: str, window: int):
+#     df[prefix + '_high_max'] = df['high'].rolling(window=window).agg({'maxLast5': max_last_5})
+#     df[prefix + '_low_min'] = df['low'].rolling(window=window).agg({'minLast5': min_last_5})
+#
+#     df[prefix + '_barCount_sum'] = df['barCount'].rolling(window=window).agg({'sumLast5': sum_last_5})
+#     df[prefix + '_volume_sum'] = df['volume'].rolling(window=window).agg({'sumLast5': sum_last_5})
+#     df[prefix + '_weighted_vol_avg_sum'] = df['_weighted_vol_avg'].rolling(window=6).agg({'SumLast5': sum_last_5})
+#     df[prefix + '_average_avg'] = df[prefix + '_weighted_vol_avg_sum'] / df[prefix + '_volume_sum']
+#     df[prefix + '_average_avg'] = df[prefix + '_average_avg'].round(decimals=3)
+#     df.drop(columns=[prefix + '_weighted_vol_avg_sum'])
 
 
 # Compute Future 5-second window summary
@@ -81,14 +81,14 @@ def future_avg(df, prefix: str, window: int):
     df.set_index('date')
     df = df.sort_index(ascending=False)
     df.reset_index()
-    df[prefix + '_average'] = df['average'].rolling(window=window).agg({'firstValue': firstValue})
+    df[prefix + '_average'] = df['h0s_average'].rolling(window=window).agg({'firstValue': firstValue})
     df = df.sort_index(ascending=True)
     df.reset_index()
     return df
 
 
 def future_arrow(df, prefix: str, field: str, window: float):
-    df[prefix + "_arrow"] = df.apply(lambda x: arrow(x[field], x['average'], window), axis=1)
+    df[prefix + "_arrow"] = df.apply(lambda x: arrow(x[field], x['h0s_average'], window), axis=1)
     return df
 
 
@@ -96,7 +96,7 @@ def rebase(low,
            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10,
            c11, c12, c13, c14, c15, c16, c17, c18, c19, c20,
            c21, c22, c23, c24, c25, c26, c27, c28, c29, c30,
-           c31, c32, c33, c34, c35, c36, c37):
+           c31, c32, c33, c34, c35):
    return pd.Series([
        c1 - low, c2 - low, c3 - low, c4 - low, c5 - low,
        c6 - low, c7 - low, c8 - low, c9 - low, c10 - low,
@@ -104,8 +104,7 @@ def rebase(low,
        c16 - low, c17 - low, c18 - low, c19 - low, c20 - low,
        c21 - low, c22 - low, c23 - low, c24 - low, c25 - low,
        c26 - low, c27 - low, c28 - low, c29 - low, c30 - low,
-       c31 - low, c32 - low, c33 - low, c34 - low, c35 - low,
-       c36 - low, c37 - low])
+       c31 - low, c32 - low, c33 - low, c34 - low, c35 - low])
 
 def main(param):
 
@@ -116,6 +115,7 @@ def main(param):
     dfTrades = dc.load_data(dirSp)
     dfTrades.drop_duplicates(subset=['date'], keep='first', inplace=True)
     print(tn() + "Loaded TRADES.", dfTrades.shape)
+
 
     #
     # load BID_ASK
@@ -143,7 +143,11 @@ def main(param):
     # Process TRADES
     dfTrades['average'] = dfTrades['average'].round(decimals=3)
     # need this column to compute average of averages
-    dfTrades['_weighted_vol_avg'] = dfTrades['volume'] * dfTrades['average']
+    dfTrades = dfTrades[['date', 'low', 'average', 'high',  'volume', 'barCount']]
+    dfTrades.rename(columns={'low': 'h0s_low', 'average': 'h0s_average', 'high': 'h0s_high',
+                             'volume': 'h0s_volume', 'barCount': 'h0s_barCount', }, inplace=True)
+    dfTrades['_weighted_vol_avg'] = dfTrades['h0s_volume'] * dfTrades['h0s_average']
+
     print(tn() + " Processed TRADES data", dfTrades.shape)
 
     for ctr in range(1, 5):
@@ -154,7 +158,8 @@ def main(param):
     #
     # Process BID_ASK
     dfBA.drop(columns=['average', 'volume', 'barCount'], inplace=True)
-    dfBA.rename(columns={'open': 'bid_avg', 'high': 'ask_max', 'low': 'bid_min', 'close': 'ask_avg'}, inplace=True)
+    dfBA = dfBA[['date', 'low', 'open', 'close', 'high']]
+    dfBA.rename(columns={'low': 'h0s_bid_min', 'open': 'h0s_bid_avg', 'close': 'h0s_ask_avg', 'high': 'h0s_ask_max', }, inplace=True)
     print(tn() + " Processed BID_ASK data")
     for ctr in range(1, 5):
         prefix = "h"+str(ctr)+"s"
@@ -203,30 +208,35 @@ def main(param):
     print(tn(), f"  Dropped computed col", dfTrades.shape)
 
     #
+    #
+    #
+
+
+    #
     # write projected data w/o normalization
-    print(tn() + " Writing file projected file to csv")
+    print(tn() + " Writing projected file to csv")
     fn = param.p_out_directory + param.p_symbol + "-" + str(param.p_month_no) + ".csv"
     dfTrades.to_csv(fn, index=False)
-    print(tn() + " Wrote file projected file to csv", fn, dfTrades.shape)
+    print(tn() + " Wrote projected file to csv", fn, dfTrades.shape)
 
-    dfTrades[['open', 'high', 'close', 'average',
+    dfTrades[['h0s_high', 'h0s_average',
         'h1s_high', 'h1s_low', 'h1s_average',
         'h2s_high', 'h2s_low', 'h2s_average',
         'h3s_high', 'h3s_low', 'h3s_average',
         'h4s_high', 'h4s_low', 'h4s_average',
         'f5s_average',
-        'bid_avg', 'ask_max', 'bid_min', 'ask_avg',
+        'h0s_bid_avg', 'h0s_ask_max', 'h0s_bid_min', 'h0s_ask_avg',
         'h1s_ask_max', 'h1s_bid_min', 'h1s_bid_avg', 'h1s_ask_avg',
         'h2s_ask_max', 'h2s_bid_min', 'h2s_bid_avg', 'h2s_ask_avg',
         'h3s_ask_max', 'h3s_bid_min', 'h3s_bid_avg', 'h3s_ask_avg',
         'h4s_ask_max', 'h4s_bid_min', 'h4s_bid_avg', 'h4s_ask_avg']] = dfTrades.apply(lambda x:
-            rebase(x['low'], x['open'], x['high'], x['close'], x['average'],
+            rebase(x['h0s_low'], x['h0s_high'],  x['h0s_average'],
             x['h1s_high'], x['h1s_low'], x['h1s_average'],
             x['h2s_high'], x['h2s_low'], x['h2s_average'],
             x['h3s_high'], x['h3s_low'], x['h3s_average'],
             x['h4s_high'], x['h4s_low'], x['h4s_average'],
         x['f5s_average'],
-        x['bid_avg'], x['ask_max'], x['bid_min'], x['ask_avg'],
+        x['h0s_bid_avg'], x['h0s_ask_max'], x['h0s_bid_min'], x['h0s_ask_avg'],
         x['h1s_ask_max'], x['h1s_bid_min'], x['h1s_bid_avg'], x['h1s_ask_avg'],
         x['h2s_ask_max'], x['h2s_bid_min'], x['h2s_bid_avg'], x['h2s_ask_avg'],
         x['h3s_ask_max'], x['h3s_bid_min'], x['h3s_bid_avg'], x['h3s_ask_avg'],
@@ -254,7 +264,13 @@ class Param:
                + ", " + self.p_symbol + ", " + str(self.p_month_no) + "]"
 
 params = [
-    Param("../data/raw/", "../data/projected/", "TSLA", 7), Param("../data/raw/", "../data/projected/", "TSLA", 9)
+    Param("../data/raw/", "../data/projected/", "TSLA", 3)
+    , Param("../data/raw/", "../data/projected/", "TSLA", 4)
+    , Param("../data/raw/", "../data/projected/", "TSLA", 5)
+    , Param("../data/raw/", "../data/projected/", "TSLA", 6)
+    , Param("../data/raw/", "../data/projected/", "TSLA", 7)
+    , Param("../data/raw/", "../data/projected/", "TSLA", 8)
+    , Param("../data/raw/", "../data/projected/", "TSLA", 9)
     # , Param("../data/raw/", "AAPL")
 ]
 
